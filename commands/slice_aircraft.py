@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import traceback
 from collections.abc import Callable
 
 import adsk.core
@@ -200,7 +201,7 @@ class _ExecuteHandler(adsk.core.CommandEventHandler):
         try:
             self._session.execute()
         except Exception:
-            report_error("Slice Aircraft could not read the command parameters")
+            report_error("Slice Aircraft generation failed", traceback.format_exc())
 
 
 class _DestroyHandler(adsk.core.CommandEventHandler):
