@@ -4,11 +4,8 @@ from __future__ import annotations
 
 import traceback
 
-import adsk.core
-
 from commands.slice_aircraft import SliceAircraftCommand
 from utils.fusion import report_error
-
 
 _command: SliceAircraftCommand | None = None
 

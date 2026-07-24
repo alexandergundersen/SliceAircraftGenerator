@@ -3,16 +3,19 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from typing import TYPE_CHECKING
 
-import adsk.fusion
+from geometry.build_context import AircraftBuildContext
+
+if TYPE_CHECKING:
+    import adsk.fusion
 
 
 class AircraftDefinition(ABC):
     """A named aircraft recipe capable of creating a native Fusion component.
 
-    Implementations must create parametric features (rather than importing a mesh
-    or a direct B-Rep) so that the resulting model is visible and editable in
-    Fusion's timeline.
+    Implementations receive immutable build inputs and should create parametric
+    features, rather than importing opaque mesh or direct B-Rep geometry.
     """
 
     @property
@@ -26,14 +29,11 @@ class AircraftDefinition(ABC):
         """Return the default overall length in Fusion's internal centimetres."""
 
     @abstractmethod
-    def generate(
-        self, root_component: adsk.fusion.Component, length_cm: float
-    ) -> adsk.fusion.Component:
+    def generate(self, context: AircraftBuildContext) -> adsk.fusion.Component:
         """Create and return an editable aircraft component below ``root_component``.
 
         Args:
-            root_component: Design root where the generated occurrence is placed.
-            length_cm: Requested overall aircraft length in Fusion internal units.
+            context: Immutable inputs for the requested generation operation.
 
         Raises:
             ValueError: If the requested dimensions are not physically meaningful.

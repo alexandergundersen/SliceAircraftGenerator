@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "slice-aircraft-generator"
 version = "0.2.0"
-description = "Autodesk Fusion 360 add-in for sliced-aircraft fabrication workflows"
+description = "Autodesk Fusion 360 add-in with reusable aircraft geometry infrastructure"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { file = "LICENSE" }

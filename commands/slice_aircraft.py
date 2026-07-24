@@ -7,17 +7,16 @@ from collections.abc import Callable
 import adsk.core
 import adsk.fusion
 
-from geometry import AircraftDefinition, SR71Definition
+from geometry import AircraftBuildContext, AircraftDefinition, EllipticalLoftPrototypeDefinition
 from utils.events import EventSubscriptions
 from utils.fusion import log, report_error
-
 
 COMMAND_ID = "com_sliceaircraftgenerator_slice_aircraft"
 COMMAND_NAME = "Slice Aircraft"
 COMMAND_DESCRIPTION = "Configure a sliced-aircraft layout."
 WORKSPACE_ID = "FusionSolidEnvironment"
 PANEL_ID = "SolidCreatePanel"
-AIRCRAFT_DEFINITIONS: tuple[AircraftDefinition, ...] = (SR71Definition(),)
+AIRCRAFT_DEFINITIONS: tuple[AircraftDefinition, ...] = (EllipticalLoftPrototypeDefinition(),)
 
 
 class SliceAircraftCommand:
@@ -80,13 +79,13 @@ class SliceAircraftCommand:
 
         log("Slice Aircraft Generator unloaded.")
 
-    def create_session(self, command: adsk.core.Command) -> "_CommandSession":
+    def create_session(self, command: adsk.core.Command) -> _CommandSession:
         """Create and retain a dialog session until Fusion destroys its command."""
         session = _CommandSession(command, self._release_session)
         self._active_sessions.add(session)
         return session
 
-    def _release_session(self, session: "_CommandSession") -> None:
+    def _release_session(self, session: _CommandSession) -> None:
         self._active_sessions.discard(session)
 
 
@@ -110,7 +109,7 @@ class _CommandSession:
     """Retains handlers and inputs for one open instance of the command dialog."""
 
     def __init__(
-        self, command: adsk.core.Command, release: Callable[["_CommandSession"], None]
+        self, command: adsk.core.Command, release: Callable[[_CommandSession], None]
     ) -> None:
         self._command = command
         self._subscriptions = EventSubscriptions()
@@ -167,9 +166,13 @@ class _CommandSession:
         if design.designType != adsk.fusion.DesignTypes.ParametricDesignType:
             raise RuntimeError("Enable Capture Design History before generating an aircraft.")
 
-        component = definition.generate(design.rootComponent, self._length.value)
+        context = AircraftBuildContext(
+            root_component=design.rootComponent,
+            length_cm=self._length.value,
+        )
+        component = definition.generate(context)
         log(
-            "Generated aircraft component: "
+            "Generated prototype component: "
             f"{component.name}; "
             f"aircraft={aircraft}, length={self._length.expression}, "
             f"rib_count={self._rib_count.value}, "

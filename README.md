@@ -5,11 +5,13 @@ starting point for a fabrication-oriented, sliced-aircraft workflow. It adds
 **Slice Aircraft** to **Solid → Create** and opens a parameter dialog containing
 placeholder inputs for Aircraft, Length, Rib Count, and Rib Thickness.
 
-The initial SR-71 Blackbird definition generates an editable, station-based
-fuselage loft. Each station is retained as a named construction plane and
-sketch, followed by a native Fusion `LoftFeature`, so the resulting B-Rep is
-inspectable and editable in the parametric timeline. Rib and export workflows
-remain placeholders for future releases.
+The initial **Elliptical Loft Prototype** generates editable demonstration
+geometry for validating the end-to-end Fusion workflow. Each station is retained
+as a named construction plane and sketch, followed by a native Fusion
+`LoftFeature`, so the resulting B-Rep is inspectable and editable in the
+parametric timeline. It is infrastructure and demonstration geometry, not an
+accurate model of any aircraft. Rib and export workflows remain placeholders for
+future releases.
 
 ## Install
 
@@ -47,12 +49,15 @@ expected clean unload lifecycle for a Fusion add-in.
 ## Geometry definitions
 
 `geometry.aircraft_definition.AircraftDefinition` is the contract for aircraft
-recipes. A definition receives Fusion's root component and a requested length
-(in Fusion internal centimetres), creates a child component, and returns it.
-`SR71Definition` is the first implementation. It creates ordered elliptical
-station profiles on YZ offset planes and passes them to one solid loft feature.
-This keeps the source geometry and the B-Rep timeline-friendly rather than
-producing an opaque imported body.
+recipes. It receives an immutable `AircraftBuildContext` and returns a generated
+component. `Station` and its validation/scaling helpers are pure Python, while
+`LoftBuilder` owns the Fusion-specific construction planes, sketches, native
+solid loft, and failed-generation cleanup.
+
+`EllipticalLoftPrototypeDefinition` provides generic station data and delegates
+to `LoftBuilder`. It is intentionally only a generic demonstration recipe, not
+an accurate model of an aircraft; accurate aircraft definitions will be added
+separately.
 
 ## License
 

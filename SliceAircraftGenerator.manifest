@@ -4,7 +4,7 @@
   "id": "com.sliceaircraftgenerator.addin",
   "author": "SliceAircraftGenerator contributors",
   "description": {
-    "": "Creates parameter-driven sliced-aircraft layouts for fabrication."
+    "": "Creates parametric prototype geometry for sliced-aircraft workflows."
   },
   "version": "0.2.0",
   "runOnStartup": false,

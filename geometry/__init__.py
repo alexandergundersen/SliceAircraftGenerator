@@ -1,6 +1,17 @@
-"""Aircraft definitions and native Fusion geometry builders."""
+"""Reusable aircraft recipes, pure station calculations, and Fusion builders."""
 
 from geometry.aircraft_definition import AircraftDefinition
-from geometry.sr71_definition import SR71Definition
+from geometry.build_context import AircraftBuildContext
+from geometry.elliptical_loft_prototype import EllipticalLoftPrototypeDefinition
+from geometry.loft_builder import LoftBuilder
+from geometry.station import Station, scale_stations, validate_station_sequence
 
-__all__ = ["AircraftDefinition", "SR71Definition"]
+__all__ = [
+    "AircraftBuildContext",
+    "AircraftDefinition",
+    "EllipticalLoftPrototypeDefinition",
+    "LoftBuilder",
+    "Station",
+    "scale_stations",
+    "validate_station_sequence",
+]
