@@ -9,10 +9,10 @@ import adsk.core
 import adsk.fusion
 
 from ..geometry import (
+    AIRCRAFT_DEFINITIONS,
     AircraftBuildContext,
     AircraftDefinition,
     BuildPlacement,
-    EllipticalLoftPrototypeDefinition,
 )
 from ..utils.events import EventSubscriptions
 from ..utils.fusion import log, report_error
@@ -22,7 +22,6 @@ COMMAND_NAME = "Slice Aircraft"
 COMMAND_DESCRIPTION = "Configure a sliced-aircraft layout."
 WORKSPACE_ID = "FusionSolidEnvironment"
 PANEL_ID = "SolidCreatePanel"
-AIRCRAFT_DEFINITIONS: tuple[AircraftDefinition, ...] = (EllipticalLoftPrototypeDefinition(),)
 
 
 class SliceAircraftCommand:
@@ -152,16 +151,14 @@ class _CommandSession:
 
         self._subscriptions.add(self._command.execute, _ExecuteHandler(self))
         self._subscriptions.add(self._command.destroy, _DestroyHandler(self))
+        self._subscriptions.add(self._command.inputChanged, _InputChangedHandler(self))
 
     def execute(self) -> None:
         """Resolve the selected definition and create its native Fusion B-Rep."""
         if not all((self._aircraft, self._length, self._rib_count, self._rib_thickness)):
             raise RuntimeError("The Slice Aircraft dialog was not initialized.")
 
-        aircraft = self._aircraft.selectedItem.name if self._aircraft.selectedItem else ""
-        definition = next(
-            (item for item in AIRCRAFT_DEFINITIONS if item.display_name == aircraft), None
-        )
+        definition = self._selected_definition()
         if definition is None:
             raise RuntimeError("Select a supported aircraft definition.")
 
@@ -180,11 +177,32 @@ class _CommandSession:
         )
         component = definition.generate(context)
         log(
-            "Generated prototype component: "
-            f"aircraft={aircraft}, placement={placement.value}, "
+            "Generated aircraft component: "
+            f"aircraft={definition.display_name}, placement={placement.value}, "
             f"target_component={component.name}, length={self._length.expression}, "
             f"rib_count={self._rib_count.value}, "
             f"rib_thickness={self._rib_thickness.expression}"
+        )
+
+    def update_default_length(self) -> None:
+        """Apply the selected definition's display-model default when possible."""
+        if self._length is None:
+            return
+        definition = self._selected_definition()
+        if definition is not None:
+            self._length.expression = f"{definition.default_length_cm * 10:g} mm"
+
+    def _selected_definition(self) -> AircraftDefinition | None:
+        if self._aircraft is None or self._aircraft.selectedItem is None:
+            return None
+        selected_name = self._aircraft.selectedItem.name
+        return next(
+            (
+                definition
+                for definition in AIRCRAFT_DEFINITIONS
+                if definition.display_name == selected_name
+            ),
+            None,
         )
 
     def dispose(self) -> None:
@@ -221,6 +239,21 @@ class _DestroyHandler(adsk.core.CommandEventHandler):
     def notify(self, args: adsk.core.CommandEventArgs) -> None:
         del args
         self._session.dispose()
+
+
+class _InputChangedHandler(adsk.core.InputChangedEventHandler):
+    """Refreshes the displayed length when the aircraft definition changes."""
+
+    def __init__(self, session: _CommandSession) -> None:
+        super().__init__()
+        self._session = session
+
+    def notify(self, args: adsk.core.InputChangedEventArgs) -> None:
+        try:
+            if args.input.id == "aircraft":
+                self._session.update_default_length()
+        except Exception:
+            report_error("Unable to update the aircraft default length", traceback.format_exc())
 
 
 def _placement_for_design_intent(design_intent: adsk.fusion.DesignIntentTypes) -> BuildPlacement:

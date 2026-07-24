@@ -13,6 +13,12 @@ parametric timeline. It is infrastructure and demonstration geometry, not an
 accurate model of any aircraft. Rib and export workflows remain placeholders for
 future releases.
 
+The **SR-71 Blackbird** option is the default 300 mm display model. It produces
+a native, editable multi-body approximation containing a chine-shaped fuselage,
+delta wing, paired nacelles, raised canopy, and canted twin tails. It is designed
+to be recognizable from top and side views, not to reproduce restoration or
+engineering geometry.
+
 ## Install
 
 1. Download or clone this repository.
@@ -58,6 +64,29 @@ solid loft, and failed-generation cleanup.
 to `LoftBuilder`. It is intentionally only a generic demonstration recipe, not
 an accurate model of an aircraft; accurate aircraft definitions will be added
 separately.
+
+## SR-71 approximation
+
+The model uses X nose-to-tail, Y lateral, and Z vertical coordinates; normalized
+X values run from 0 at the nose to 1 at the tail. The Smithsonian National Air
+and Space Museum lists the SR-71 at **32.741 m** long with a **16.942 m** span,
+which yields the sourced span-to-length ratio used by this model (approximately
+0.517). [Smithsonian collection record](https://airandspace.si.edu/collection-objects/lockheed-sr-71-blackbird/nasm_A19920072000)
+and [NASA's SR-71 fact sheet](https://www.nasa.gov/wp-content/uploads/2021/09/495839main_FS-030_SR-71.pdf)
+independently report essentially the same dimensions.
+
+Only that overall ratio is sourced. Chines, station contours, planform control
+points, canopy shape, nacelle contours, and tail geometry are normalized artistic
+approximations intended for a stable fabrication-oriented display model. All
+dimensions scale linearly from the requested length. The current SR-71 is
+deliberately multi-body; it does not perform fragile boolean unions.
+
+### Development
+
+SR-71-specific normalized proportions and validation live in `geometry/sr71_data.py`.
+`geometry/sr71_builder.py` converts them into Fusion features while reusing the
+generic placement transaction, so Part and Hybrid behavior and failure cleanup
+remain consistent with the diagnostic prototype.
 
 The command selects geometry placement from Fusion's design intent. Part Designs
 generate directly in the root component, Hybrid Designs generate in a new
