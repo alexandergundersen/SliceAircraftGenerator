@@ -30,6 +30,11 @@ construction geometry. Its clean three-quarter and front views exposed detached
 nacelles and rounded tail silhouettes, so the current revision rebuilds the
 recipe around per-station planform containment and angular tail profiles.
 
+That SR-71 work is an experimental draft-PR spike, not an approved production
+definition. [ADR 0001](docs/adr/0001-aircraft-geometry-sources.md) records the
+decision to replace further station-ratio iteration with a shared,
+profile-driven provider architecture before a production SR-71 is attempted.
+
 ## Install
 
 1. Download or clone this repository.
