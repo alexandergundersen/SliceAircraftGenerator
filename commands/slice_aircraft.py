@@ -5,7 +5,9 @@ from __future__ import annotations
 from collections.abc import Callable
 
 import adsk.core
+import adsk.fusion
 
+from geometry import AircraftDefinition, SR71Definition
 from utils.events import EventSubscriptions
 from utils.fusion import log, report_error
 
@@ -15,6 +17,7 @@ COMMAND_NAME = "Slice Aircraft"
 COMMAND_DESCRIPTION = "Configure a sliced-aircraft layout."
 WORKSPACE_ID = "FusionSolidEnvironment"
 PANEL_ID = "SolidCreatePanel"
+AIRCRAFT_DEFINITIONS: tuple[AircraftDefinition, ...] = (SR71Definition(),)
 
 
 class SliceAircraftCommand:
@@ -124,10 +127,16 @@ class _CommandSession:
         self._aircraft = inputs.addDropDownCommandInput(
             "aircraft", "Aircraft", adsk.core.DropDownStyles.TextListDropDownStyle
         )
-        self._aircraft.listItems.add("Example aircraft", True)
+        for index, definition in enumerate(AIRCRAFT_DEFINITIONS):
+            self._aircraft.listItems.add(definition.display_name, index == 0)
 
         self._length = inputs.addValueInput(
-            "length", "Length", "mm", adsk.core.ValueInput.createByString("1000 mm")
+            "length",
+            "Length",
+            "mm",
+            adsk.core.ValueInput.createByString(
+                f"{AIRCRAFT_DEFINITIONS[0].default_length_cm * 10:g} mm"
+            ),
         )
         self._rib_count = inputs.addIntegerSpinnerCommandInput(
             "rib_count", "Rib Count", 1, 500, 1, 12
@@ -140,13 +149,28 @@ class _CommandSession:
         self._subscriptions.add(self._command.destroy, _DestroyHandler(self))
 
     def execute(self) -> None:
-        """Read the placeholder inputs; geometry generation will be added here."""
+        """Resolve the selected definition and create its native Fusion B-Rep."""
         if not all((self._aircraft, self._length, self._rib_count, self._rib_thickness)):
             raise RuntimeError("The Slice Aircraft dialog was not initialized.")
 
-        aircraft = self._aircraft.selectedItem.name if self._aircraft.selectedItem else "Unknown"
+        aircraft = self._aircraft.selectedItem.name if self._aircraft.selectedItem else ""
+        definition = next(
+            (item for item in AIRCRAFT_DEFINITIONS if item.display_name == aircraft), None
+        )
+        if definition is None:
+            raise RuntimeError("Select a supported aircraft definition.")
+
+        app = adsk.core.Application.get()
+        design = adsk.fusion.Design.cast(app.activeProduct)
+        if design is None:
+            raise RuntimeError("Open a Fusion Design before generating an aircraft.")
+        if design.designType != adsk.fusion.DesignTypes.ParametricDesignType:
+            raise RuntimeError("Enable Capture Design History before generating an aircraft.")
+
+        component = definition.generate(design.rootComponent, self._length.value)
         log(
-            "Slice Aircraft parameters: "
+            "Generated aircraft component: "
+            f"{component.name}; "
             f"aircraft={aircraft}, length={self._length.expression}, "
             f"rib_count={self._rib_count.value}, "
             f"rib_thickness={self._rib_thickness.expression}"

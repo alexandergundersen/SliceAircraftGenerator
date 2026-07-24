@@ -6,7 +6,7 @@
   "description": {
     "": "Creates parameter-driven sliced-aircraft layouts for fabrication."
   },
-  "version": "0.1.0",
+  "version": "0.2.0",
   "runOnStartup": false,
   "supportedOS": "mac|windows",
   "editEnabled": true

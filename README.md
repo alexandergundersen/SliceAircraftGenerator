@@ -5,9 +5,11 @@ starting point for a fabrication-oriented, sliced-aircraft workflow. It adds
 **Slice Aircraft** to **Solid → Create** and opens a parameter dialog containing
 placeholder inputs for Aircraft, Length, Rib Count, and Rib Thickness.
 
-The current release establishes the add-in shell and UI lifecycle. It records
-the accepted values in Fusion's Text Commands log; it does not yet create model
-geometry or export files.
+The initial SR-71 Blackbird definition generates an editable, station-based
+fuselage loft. Each station is retained as a named construction plane and
+sketch, followed by a native Fusion `LoftFeature`, so the resulting B-Rep is
+inspectable and editable in the parametric timeline. Rib and export workflows
+remain placeholders for future releases.
 
 ## Install
 
@@ -25,7 +27,7 @@ geometry or export files.
 ```
 SliceAircraftGenerator.py       Fusion add-in entry point (`run` / `stop`)
 commands/                       Toolbar commands and command event handlers
-geometry/                       Future aircraft/rib geometry generation
+geometry/                       Aircraft definitions and station-based B-Rep generation
 export/                         Future DXF, SVG, and other fabrication exports
 utils/                          Fusion event lifetime and diagnostics helpers
 resources/                      Optional command artwork
@@ -41,6 +43,16 @@ This lets the add-in reload without leaving duplicate controls or stale callback
 The entry point deletes its toolbar control and command definition in `stop`,
 and its handlers are removed before those UI objects are released. This is the
 expected clean unload lifecycle for a Fusion add-in.
+
+## Geometry definitions
+
+`geometry.aircraft_definition.AircraftDefinition` is the contract for aircraft
+recipes. A definition receives Fusion's root component and a requested length
+(in Fusion internal centimetres), creates a child component, and returns it.
+`SR71Definition` is the first implementation. It creates ordered elliptical
+station profiles on YZ offset planes and passes them to one solid loft feature.
+This keeps the source geometry and the B-Rep timeline-friendly rather than
+producing an opaque imported body.
 
 ## License
 
