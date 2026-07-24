@@ -1,0 +1,13 @@
+{
+  "autodeskProduct": "Fusion360",
+  "type": "addin",
+  "id": "com.sliceaircraftgenerator.addin",
+  "author": "SliceAircraftGenerator contributors",
+  "description": {
+    "": "Creates parameter-driven sliced-aircraft layouts for fabrication."
+  },
+  "version": "0.1.0",
+  "runOnStartup": false,
+  "supportedOS": "mac|windows",
+  "editEnabled": true
+}
