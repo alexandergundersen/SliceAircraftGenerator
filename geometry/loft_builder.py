@@ -1,4 +1,4 @@
-"""Fusion-specific construction of an elliptical station loft."""
+"""Fusion-specific loft construction and transactional feature ownership."""
 
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ def uses_origin_plane(offset_cm: float) -> bool:
 
 
 @dataclass
-class _BuildTarget:
+class BuildTarget:
     """Resolved Fusion target and ownership details for one generation operation."""
 
     component: adsk.fusion.Component
@@ -34,13 +34,97 @@ class _BuildTarget:
 class _CreatedFeatures:
     """Objects owned by a root-component generation and eligible for rollback."""
 
-    loft: adsk.fusion.LoftFeature | None = None
-    station_sketches: list[adsk.fusion.Sketch] = field(default_factory=list)
-    offset_planes: list[adsk.fusion.ConstructionPlane] = field(default_factory=list)
+    features: list[object] = field(default_factory=list)
+    sketches: list[object] = field(default_factory=list)
+    offset_planes: list[object] = field(default_factory=list)
+
+
+class FeatureTransaction:
+    """Resolve placement and roll back only Fusion objects created by this operation."""
+
+    def __init__(self, context: AircraftBuildContext, feature_name_prefix: str) -> None:
+        self._context = context
+        self._feature_name_prefix = feature_name_prefix
+        self._created_features = _CreatedFeatures()
+        self.target = self._resolve_target()
+
+    @property
+    def component(self) -> adsk.fusion.Component:
+        """Return the root or owned internal component selected for generation."""
+        return self.target.component
+
+    def track_feature(self, feature: object) -> None:
+        """Record a newly created native feature for root-component rollback."""
+        self._created_features.features.append(feature)
+
+    def track_sketch(self, sketch: object) -> None:
+        """Record a newly created sketch for root-component rollback."""
+        self._created_features.sketches.append(sketch)
+
+    def track_offset_plane(self, plane: object) -> None:
+        """Record a newly created offset plane for root-component rollback."""
+        self._created_features.offset_planes.append(plane)
+
+    def rollback(self) -> None:
+        """Delete the owned occurrence or newly created root features in dependency order."""
+        if self.target.owned_occurrence is not None:
+            self._delete_if_valid(self.target.owned_occurrence)
+            return
+
+        for feature in reversed(self._created_features.features):
+            self._delete_if_valid(feature)
+        for sketch in reversed(self._created_features.sketches):
+            self._delete_if_valid(sketch)
+        for plane in reversed(self._created_features.offset_planes):
+            self._delete_if_valid(plane)
+
+    def _resolve_target(self) -> BuildTarget:
+        if self._context.placement is BuildPlacement.ROOT_COMPONENT:
+            return BuildTarget(
+                component=self._context.root_component,
+                owned_occurrence=None,
+                rename_component=False,
+            )
+
+        if self._context.placement is not BuildPlacement.NEW_INTERNAL_COMPONENT:
+            raise ValueError(f"Unsupported aircraft build placement: {self._context.placement!r}")
+
+        occurrence = None
+        try:
+            import adsk.core
+
+            occurrence = self._context.root_component.occurrences.addNewComponent(
+                adsk.core.Matrix3D.create()
+            )
+            if occurrence is None:
+                raise RuntimeError("Unable to create the generated component occurrence.")
+            component = occurrence.component
+            if component is None:
+                raise RuntimeError("Unable to access the generated component.")
+            component.name = self._feature_name_prefix
+            occurrence.name = self._feature_name_prefix
+            return BuildTarget(
+                component=component,
+                owned_occurrence=occurrence,
+                rename_component=True,
+            )
+        except Exception:
+            # This operation owns a partially created internal occurrence.
+            self._delete_if_valid(occurrence)
+            raise
+
+    @staticmethod
+    def _delete_if_valid(entity: object | None) -> None:
+        """Best-effort cleanup that preserves the originating exception."""
+        try:
+            if entity is not None and entity.isValid:
+                entity.deleteMe()
+        except Exception:
+            pass
 
 
 class LoftBuilder:
-    """Build named Fusion timeline features from pre-validated station data."""
+    """Build named Fusion timeline features from pre-validated ellipse stations."""
 
     def build(
         self,
@@ -52,78 +136,36 @@ class LoftBuilder:
         """Create the selected target's station profiles and one native solid loft."""
         ordered_stations = validate_station_sequence(stations)
         feature_name_prefix = context.feature_name_prefix(default_component_name)
-        target = self._resolve_target(context, feature_name_prefix)
-        created_features = _CreatedFeatures()
+        transaction = FeatureTransaction(context, feature_name_prefix)
 
         try:
             profiles = self._create_station_profiles(
-                target.component,
+                transaction,
                 ordered_stations,
                 context.length_cm,
                 feature_name_prefix,
-                created_features,
             )
-            loft = self._create_solid_loft(target.component, profiles, created_features)
+            loft = self._create_solid_loft(transaction, profiles)
             loft.name = f"{feature_name_prefix} Loft"
             if loft.bodies.count:
                 loft.bodies.item(0).name = f"{feature_name_prefix} Body"
-            return target.component
+            return transaction.component
         except Exception:
-            if target.owned_occurrence is not None:
-                self._delete_if_valid(target.owned_occurrence)
-            else:
-                self._cleanup_root_features(created_features)
-            raise
-
-    @staticmethod
-    def _resolve_target(context: AircraftBuildContext, feature_name_prefix: str) -> _BuildTarget:
-        """Resolve root or internal-component placement before creating geometry."""
-        if context.placement is BuildPlacement.ROOT_COMPONENT:
-            return _BuildTarget(
-                component=context.root_component,
-                owned_occurrence=None,
-                rename_component=False,
-            )
-
-        if context.placement is not BuildPlacement.NEW_INTERNAL_COMPONENT:
-            raise ValueError(f"Unsupported aircraft build placement: {context.placement!r}")
-
-        occurrence = None
-        try:
-            import adsk.core
-
-            occurrence = context.root_component.occurrences.addNewComponent(
-                adsk.core.Matrix3D.create()
-            )
-            if occurrence is None:
-                raise RuntimeError("Unable to create the generated component occurrence.")
-            component = occurrence.component
-            if component is None:
-                raise RuntimeError("Unable to access the generated component.")
-            component.name = feature_name_prefix
-            occurrence.name = feature_name_prefix
-            return _BuildTarget(
-                component=component,
-                owned_occurrence=occurrence,
-                rename_component=True,
-            )
-        except Exception:
-            # This operation owns a partially created internal occurrence.
-            LoftBuilder._delete_if_valid(occurrence)
+            transaction.rollback()
             raise
 
     @staticmethod
     def _create_station_profiles(
-        component: adsk.fusion.Component,
+        transaction: FeatureTransaction,
         stations: tuple[Station, ...],
         length_cm: float,
         feature_name_prefix: str,
-        created_features: _CreatedFeatures,
     ) -> list[adsk.fusion.Profile]:
         """Create closed ellipse profiles on origin or named YZ offset planes."""
         import adsk.core
 
         profiles: list[adsk.fusion.Profile] = []
+        component = transaction.component
         for index, station in enumerate(stations, start=1):
             offset_cm = station.position * length_cm
             sketch_plane = component.yZConstructionPlane
@@ -149,7 +191,7 @@ class LoftBuilder:
                     raise RuntimeError(
                         f"Station {index:02d}: unable to create offset plane at {offset_cm:g} cm."
                     )
-                created_features.offset_planes.append(plane)
+                transaction.track_offset_plane(plane)
                 plane.name = f"{feature_name_prefix} Station {index:02d} Plane"
                 sketch_plane = plane
 
@@ -158,7 +200,7 @@ class LoftBuilder:
                 raise RuntimeError(
                     f"Station {index:02d}: unable to create sketch at {offset_cm:g} cm."
                 )
-            created_features.station_sketches.append(sketch)
+            transaction.track_sketch(sketch)
             sketch.name = f"{feature_name_prefix} Station {index:02d}"
             LoftBuilder._add_ellipse(sketch, station, index, offset_cm)
             if sketch.profiles.count != 1:
@@ -192,14 +234,12 @@ class LoftBuilder:
 
     @staticmethod
     def _create_solid_loft(
-        component: adsk.fusion.Component,
-        profiles: list[adsk.fusion.Profile],
-        created_features: _CreatedFeatures,
+        transaction: FeatureTransaction, profiles: list[adsk.fusion.Profile]
     ) -> adsk.fusion.LoftFeature:
         """Create one native solid LoftFeature from ordered profile sections."""
         import adsk.fusion
 
-        loft_features = component.features.loftFeatures
+        loft_features = transaction.component.features.loftFeatures
         loft_input = loft_features.createInput(
             adsk.fusion.FeatureOperations.NewBodyFeatureOperation
         )
@@ -213,24 +253,5 @@ class LoftBuilder:
         loft = loft_features.add(loft_input)
         if loft is None:
             raise RuntimeError("Unable to create the solid elliptical loft feature.")
-        created_features.loft = loft
+        transaction.track_feature(loft)
         return loft
-
-    @staticmethod
-    def _cleanup_root_features(created_features: _CreatedFeatures) -> None:
-        """Best-effort rollback of only objects created in a root component."""
-        LoftBuilder._delete_if_valid(created_features.loft)
-        for sketch in reversed(created_features.station_sketches):
-            LoftBuilder._delete_if_valid(sketch)
-        for plane in reversed(created_features.offset_planes):
-            LoftBuilder._delete_if_valid(plane)
-
-    @staticmethod
-    def _delete_if_valid(entity: object | None) -> None:
-        """Delete a generated Fusion object without masking the original error."""
-        try:
-            if entity is not None and entity.isValid:
-                entity.deleteMe()
-        except Exception:
-            # Cleanup is deliberately best effort; the originating error is re-raised.
-            pass
