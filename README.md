@@ -5,9 +5,13 @@ starting point for a fabrication-oriented, sliced-aircraft workflow. It adds
 **Slice Aircraft** to **Solid → Create** and opens a parameter dialog containing
 placeholder inputs for Aircraft, Length, Rib Count, and Rib Thickness.
 
-The current release establishes the add-in shell and UI lifecycle. It records
-the accepted values in Fusion's Text Commands log; it does not yet create model
-geometry or export files.
+The initial **Elliptical Loft Prototype** generates editable demonstration
+geometry for validating the end-to-end Fusion workflow. Each station is retained
+as a named construction plane and sketch, followed by a native Fusion
+`LoftFeature`, so the resulting B-Rep is inspectable and editable in the
+parametric timeline. It is infrastructure and demonstration geometry, not an
+accurate model of any aircraft. Rib and export workflows remain placeholders for
+future releases.
 
 ## Install
 
@@ -25,7 +29,7 @@ geometry or export files.
 ```
 SliceAircraftGenerator.py       Fusion add-in entry point (`run` / `stop`)
 commands/                       Toolbar commands and command event handlers
-geometry/                       Future aircraft/rib geometry generation
+geometry/                       Aircraft definitions and station-based B-Rep generation
 export/                         Future DXF, SVG, and other fabrication exports
 utils/                          Fusion event lifetime and diagnostics helpers
 resources/                      Optional command artwork
@@ -41,6 +45,24 @@ This lets the add-in reload without leaving duplicate controls or stale callback
 The entry point deletes its toolbar control and command definition in `stop`,
 and its handlers are removed before those UI objects are released. This is the
 expected clean unload lifecycle for a Fusion add-in.
+
+## Geometry definitions
+
+`geometry.aircraft_definition.AircraftDefinition` is the contract for aircraft
+recipes. It receives an immutable `AircraftBuildContext` and returns a generated
+component. `Station` and its validation/scaling helpers are pure Python, while
+`LoftBuilder` owns the Fusion-specific construction planes, sketches, native
+solid loft, and failed-generation cleanup.
+
+`EllipticalLoftPrototypeDefinition` provides generic station data and delegates
+to `LoftBuilder`. It is intentionally only a generic demonstration recipe, not
+an accurate model of an aircraft; accurate aircraft definitions will be added
+separately.
+
+The command selects geometry placement from Fusion's design intent. Part Designs
+generate directly in the root component, Hybrid Designs generate in a new
+internal component, and Assembly Designs are rejected because external assembly
+components are not part of this add-in's current scope.
 
 ## License
 

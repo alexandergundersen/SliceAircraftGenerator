@@ -2,19 +2,27 @@
 
 from __future__ import annotations
 
+import traceback
 from collections.abc import Callable
 
 import adsk.core
+import adsk.fusion
 
-from utils.events import EventSubscriptions
-from utils.fusion import log, report_error
-
+from ..geometry import (
+    AircraftBuildContext,
+    AircraftDefinition,
+    BuildPlacement,
+    EllipticalLoftPrototypeDefinition,
+)
+from ..utils.events import EventSubscriptions
+from ..utils.fusion import log, report_error
 
 COMMAND_ID = "com_sliceaircraftgenerator_slice_aircraft"
 COMMAND_NAME = "Slice Aircraft"
 COMMAND_DESCRIPTION = "Configure a sliced-aircraft layout."
 WORKSPACE_ID = "FusionSolidEnvironment"
 PANEL_ID = "SolidCreatePanel"
+AIRCRAFT_DEFINITIONS: tuple[AircraftDefinition, ...] = (EllipticalLoftPrototypeDefinition(),)
 
 
 class SliceAircraftCommand:
@@ -77,13 +85,13 @@ class SliceAircraftCommand:
 
         log("Slice Aircraft Generator unloaded.")
 
-    def create_session(self, command: adsk.core.Command) -> "_CommandSession":
+    def create_session(self, command: adsk.core.Command) -> _CommandSession:
         """Create and retain a dialog session until Fusion destroys its command."""
         session = _CommandSession(command, self._release_session)
         self._active_sessions.add(session)
         return session
 
-    def _release_session(self, session: "_CommandSession") -> None:
+    def _release_session(self, session: _CommandSession) -> None:
         self._active_sessions.discard(session)
 
 
@@ -107,7 +115,7 @@ class _CommandSession:
     """Retains handlers and inputs for one open instance of the command dialog."""
 
     def __init__(
-        self, command: adsk.core.Command, release: Callable[["_CommandSession"], None]
+        self, command: adsk.core.Command, release: Callable[[_CommandSession], None]
     ) -> None:
         self._command = command
         self._subscriptions = EventSubscriptions()
@@ -124,10 +132,16 @@ class _CommandSession:
         self._aircraft = inputs.addDropDownCommandInput(
             "aircraft", "Aircraft", adsk.core.DropDownStyles.TextListDropDownStyle
         )
-        self._aircraft.listItems.add("Example aircraft", True)
+        for index, definition in enumerate(AIRCRAFT_DEFINITIONS):
+            self._aircraft.listItems.add(definition.display_name, index == 0)
 
         self._length = inputs.addValueInput(
-            "length", "Length", "mm", adsk.core.ValueInput.createByString("1000 mm")
+            "length",
+            "Length",
+            "mm",
+            adsk.core.ValueInput.createByString(
+                f"{AIRCRAFT_DEFINITIONS[0].default_length_cm * 10:g} mm"
+            ),
         )
         self._rib_count = inputs.addIntegerSpinnerCommandInput(
             "rib_count", "Rib Count", 1, 500, 1, 12
@@ -140,14 +154,35 @@ class _CommandSession:
         self._subscriptions.add(self._command.destroy, _DestroyHandler(self))
 
     def execute(self) -> None:
-        """Read the placeholder inputs; geometry generation will be added here."""
+        """Resolve the selected definition and create its native Fusion B-Rep."""
         if not all((self._aircraft, self._length, self._rib_count, self._rib_thickness)):
             raise RuntimeError("The Slice Aircraft dialog was not initialized.")
 
-        aircraft = self._aircraft.selectedItem.name if self._aircraft.selectedItem else "Unknown"
+        aircraft = self._aircraft.selectedItem.name if self._aircraft.selectedItem else ""
+        definition = next(
+            (item for item in AIRCRAFT_DEFINITIONS if item.display_name == aircraft), None
+        )
+        if definition is None:
+            raise RuntimeError("Select a supported aircraft definition.")
+
+        app = adsk.core.Application.get()
+        design = adsk.fusion.Design.cast(app.activeProduct)
+        if design is None:
+            raise RuntimeError("Open a Fusion Design before generating an aircraft.")
+        placement = _placement_for_design_intent(design.designIntent)
+        if design.designType != adsk.fusion.DesignTypes.ParametricDesignType:
+            raise RuntimeError("Enable Capture Design History before generating an aircraft.")
+
+        context = AircraftBuildContext(
+            root_component=design.rootComponent,
+            length_cm=self._length.value,
+            placement=placement,
+        )
+        component = definition.generate(context)
         log(
-            "Slice Aircraft parameters: "
-            f"aircraft={aircraft}, length={self._length.expression}, "
+            "Generated prototype component: "
+            f"aircraft={aircraft}, placement={placement.value}, "
+            f"target_component={component.name}, length={self._length.expression}, "
             f"rib_count={self._rib_count.value}, "
             f"rib_thickness={self._rib_thickness.expression}"
         )
@@ -173,7 +208,7 @@ class _ExecuteHandler(adsk.core.CommandEventHandler):
         try:
             self._session.execute()
         except Exception:
-            report_error("Slice Aircraft could not read the command parameters")
+            report_error("Slice Aircraft generation failed", traceback.format_exc())
 
 
 class _DestroyHandler(adsk.core.CommandEventHandler):
@@ -186,3 +221,15 @@ class _DestroyHandler(adsk.core.CommandEventHandler):
     def notify(self, args: adsk.core.CommandEventArgs) -> None:
         del args
         self._session.dispose()
+
+
+def _placement_for_design_intent(design_intent: adsk.fusion.DesignIntentTypes) -> BuildPlacement:
+    """Map Fusion's design intent to an explicit geometry placement mode."""
+    if design_intent == adsk.fusion.DesignIntentTypes.PartDesignIntentType:
+        return BuildPlacement.ROOT_COMPONENT
+    if design_intent == adsk.fusion.DesignIntentTypes.HybridDesignIntentType:
+        return BuildPlacement.NEW_INTERNAL_COMPONENT
+    raise RuntimeError(
+        "Slice Aircraft currently supports Part and Hybrid Designs. "
+        "Open a Part Design or Hybrid Design to generate editable geometry."
+    )
