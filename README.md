@@ -19,6 +19,12 @@ delta wing, paired nacelles, raised canopy, and canted twin tails. It is designe
 to be recognizable from top and side views, not to reproduce restoration or
 engineering geometry.
 
+The first manual visual smoke test successfully generated the model but found
+that its initial proportions read as a thick flying wing. The current recipe
+therefore refines the narrow center body, swept outer planform, nacelle spacing,
+low canopy, thin wing, and independently-thick canted tails. Another manual
+Fusion visual smoke test is required before this definition is considered ready.
+
 ## Install
 
 1. Download or clone this repository.
@@ -80,6 +86,27 @@ points, canopy shape, nacelle contours, and tail geometry are normalized artisti
 approximations intended for a stable fabrication-oriented display model. All
 dimensions scale linearly from the requested length. The current SR-71 is
 deliberately multi-body; it does not perform fragile boolean unions.
+
+The refined approximation uses the following normalized design ranges. These are
+artistic fabrication choices, not sourced SR-71 engineering dimensions:
+
+- The central fuselage/chine maximum half-width is 0.062 of overall length; it is
+  0.025 near x=0.12 and 0.052 near x=0.36, with a low flattened vertical section.
+- The wing is 0.0065 of overall length thick (about 1.95 mm at 300 mm) and is
+  centered about the XY datum using an offset sketch plane.
+- Nacelle center offsets remain from 0.140 to 0.150 of length, their main
+  half-width is 0.038–0.043, and the outer wing provides at least 0.05 of length
+  of visible margin beyond the nacelles.
+- The five-station canopy runs from x=0.15 to x=0.38 with maximum half-width
+  0.022 and half-height 0.017, creating a deliberately low raised feature.
+- Each tail has a 0.115 maximum height, a 0.025 outward cant offset, and an
+  independent 0.006 physical thickness (about 1.8 mm at 300 mm). The tail loft
+  uses thin canted YZ profiles so the outward cant is not used as body thickness.
+
+After a successful SR-71 generation, the add-in hides only the construction
+planes and sketches it created. They remain editable in Fusion's browser and
+timeline, while the initial viewport shows the resulting bodies. Existing user
+objects and origin geometry are never hidden.
 
 ### Development
 

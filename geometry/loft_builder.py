@@ -78,6 +78,15 @@ class FeatureTransaction:
         for plane in reversed(self._created_features.offset_planes):
             self._delete_if_valid(plane)
 
+    def hide_construction_geometry(self) -> None:
+        """Hide only sketches and planes created by this generation operation."""
+        for sketch in self._created_features.sketches:
+            if sketch.isValid:
+                sketch.isVisible = False
+        for plane in self._created_features.offset_planes:
+            if plane.isValid:
+                plane.isVisible = False
+
     def _resolve_target(self) -> BuildTarget:
         if self._context.placement is BuildPlacement.ROOT_COMPONENT:
             return BuildTarget(

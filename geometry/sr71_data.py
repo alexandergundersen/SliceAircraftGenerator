@@ -26,6 +26,11 @@ def _require_finite_positive(value: float, field_name: str) -> None:
         raise ValueError(f"{field_name} must be a finite value greater than zero.")
 
 
+def _require_finite_nonnegative(value: float, field_name: str) -> None:
+    if not isfinite(value) or value < 0:
+        raise ValueError(f"{field_name} must be a finite value greater than or equal to zero.")
+
+
 def _require_normalized(value: float, field_name: str) -> None:
     if not isfinite(value) or not 0 <= value <= 1:
         raise ValueError(f"{field_name} must be finite and between 0 and 1 inclusive.")
@@ -56,7 +61,7 @@ class PlanformPoint:
 
     def __post_init__(self) -> None:
         _require_normalized(self.x_ratio, "Planform X ratio")
-        _require_finite_positive(self.y_ratio, "Planform Y ratio")
+        _require_finite_nonnegative(self.y_ratio, "Planform Y ratio")
 
 
 @dataclass(frozen=True)
@@ -105,6 +110,7 @@ class TailGeometry:
     tip_height_ratio: float
     root_y_ratio: float
     outward_tip_offset_ratio: float
+    tail_thickness_ratio: float
 
     def __post_init__(self) -> None:
         for field_name, value in (
@@ -119,6 +125,7 @@ class TailGeometry:
         _require_finite_positive(self.tip_height_ratio, "Tail tip height ratio")
         _require_finite_positive(self.root_y_ratio, "Tail root Y ratio")
         _require_finite_positive(self.outward_tip_offset_ratio, "Tail outward offset ratio")
+        _require_finite_positive(self.tail_thickness_ratio, "Tail thickness ratio")
 
 
 @dataclass(frozen=True)
@@ -155,6 +162,7 @@ class ScaledTailGeometry:
     tip_height_cm: float
     root_y_cm: float
     outward_tip_offset_cm: float
+    tail_thickness_cm: float
 
 
 @dataclass(frozen=True)
@@ -169,6 +177,42 @@ class ScaledSR71Geometry:
     nacelle_stations: tuple[ScaledNacelleStation, ...]
     canopy_stations: tuple[ScaledCanopyStation, ...]
     tail: ScaledTailGeometry
+
+    @property
+    def half_span_cm(self) -> float:
+        """Return the sourced half-span, which is set by the outer wing tips."""
+        return self.wingspan_cm / 2
+
+    @property
+    def maximum_fuselage_half_width_cm(self) -> float:
+        """Return the widest central fuselage/chine station."""
+        return max(station.half_width_cm for station in self.fuselage_stations)
+
+    @property
+    def maximum_nacelle_outer_edge_cm(self) -> float:
+        """Return the furthest nacelle edge from the XZ center plane."""
+        return max(station.center_y_cm + station.half_width_cm for station in self.nacelle_stations)
+
+    @property
+    def nacelle_tip_margin_cm(self) -> float:
+        """Return the wing width visibly remaining outside the nacelles."""
+        return self.half_span_cm - self.maximum_nacelle_outer_edge_cm
+
+    @property
+    def nacelle_centerline_variation_cm(self) -> float:
+        """Return the full lateral variation across nacelle station centers."""
+        offsets = tuple(station.center_y_cm for station in self.nacelle_stations)
+        return max(offsets) - min(offsets)
+
+    @property
+    def maximum_canopy_half_width_cm(self) -> float:
+        """Return the widest canopy station."""
+        return max(station.half_width_cm for station in self.canopy_stations)
+
+    @property
+    def maximum_canopy_half_height_cm(self) -> float:
+        """Return the tallest canopy half-height."""
+        return max(station.half_height_cm for station in self.canopy_stations)
 
     def mirrored_planform_points_cm(self) -> tuple[tuple[float, float], ...]:
         """Return the left-side mirror of the right half-planform."""
@@ -202,6 +246,12 @@ class SR71GeometryData:
         self._validate_order(self.canopy_stations, "Canopy")
         if len(self.right_planform_points) < 3:
             raise ValueError("The half-planform requires at least three control points.")
+        planform_x_positions = tuple(point.x_ratio for point in self.right_planform_points)
+        if any(
+            next_position <= position
+            for position, next_position in zip(planform_x_positions, planform_x_positions[1:])
+        ):
+            raise ValueError("Planform X positions must be strictly increasing.")
 
     @staticmethod
     def _validate_order(stations: tuple[object, ...], label: str) -> None:
@@ -260,6 +310,7 @@ class SR71GeometryData:
                 tip_height_cm=self.tail.tip_height_ratio * length_cm,
                 root_y_cm=self.tail.root_y_ratio * length_cm,
                 outward_tip_offset_cm=self.tail.outward_tip_offset_ratio * length_cm,
+                tail_thickness_cm=self.tail.tail_thickness_ratio * length_cm,
             ),
         )
 
@@ -267,45 +318,50 @@ class SR71GeometryData:
 SR71_DATA = SR71GeometryData(
     fuselage_stations=(
         FuselageStation(0.000, 0.002, 0.002, 0.001),
-        FuselageStation(0.030, 0.035, 0.022, 0.014),
-        FuselageStation(0.120, 0.080, 0.045, 0.028),
-        FuselageStation(0.320, 0.130, 0.070, 0.040),
-        FuselageStation(0.550, 0.145, 0.080, 0.045),
-        FuselageStation(0.740, 0.125, 0.060, 0.035),
-        FuselageStation(0.900, 0.075, 0.040, 0.025),
-        FuselageStation(0.985, 0.018, 0.017, 0.012),
+        FuselageStation(0.030, 0.008, 0.006, 0.003),
+        FuselageStation(0.120, 0.025, 0.014, 0.007),
+        FuselageStation(0.200, 0.034, 0.019, 0.009),
+        FuselageStation(0.360, 0.052, 0.026, 0.012),
+        FuselageStation(0.560, 0.062, 0.030, 0.014),
+        FuselageStation(0.740, 0.057, 0.026, 0.013),
+        FuselageStation(0.880, 0.041, 0.019, 0.010),
+        FuselageStation(0.970, 0.014, 0.009, 0.005),
         FuselageStation(1.000, 0.003, 0.003, 0.002),
     ),
     right_planform_points=(
-        PlanformPoint(0.080, 0.002),
-        PlanformPoint(0.200, 0.060),
-        PlanformPoint(0.360, 0.170),
+        PlanformPoint(0.000, 0.000),
+        PlanformPoint(0.080, 0.006),
+        PlanformPoint(0.180, 0.024),
+        PlanformPoint(0.360, 0.100),
         PlanformPoint(0.580, SOURCE_WINGSPAN_RATIO / 2),
-        PlanformPoint(0.750, 0.240),
-        PlanformPoint(0.900, 0.130),
-        PlanformPoint(0.985, 0.025),
-        PlanformPoint(1.000, 0.002),
+        PlanformPoint(0.730, 0.245),
+        PlanformPoint(0.880, 0.120),
+        PlanformPoint(0.980, 0.018),
+        PlanformPoint(1.000, 0.000),
     ),
     nacelle_stations=(
-        NacelleStation(0.300, 0.155, -0.005, 0.030, 0.028),
-        NacelleStation(0.410, 0.185, -0.010, 0.050, 0.040),
-        NacelleStation(0.690, 0.190, -0.015, 0.055, 0.043),
-        NacelleStation(0.900, 0.145, -0.010, 0.040, 0.032),
-        NacelleStation(0.985, 0.055, -0.005, 0.012, 0.012),
+        NacelleStation(0.300, 0.140, -0.004, 0.026, 0.022),
+        NacelleStation(0.420, 0.145, -0.007, 0.038, 0.030),
+        NacelleStation(0.690, 0.150, -0.010, 0.043, 0.033),
+        NacelleStation(0.880, 0.148, -0.008, 0.035, 0.027),
+        NacelleStation(0.970, 0.140, -0.005, 0.016, 0.014),
     ),
     canopy_stations=(
-        CanopyStation(0.155, 0.055, 0.020, 0.010),
-        CanopyStation(0.250, 0.085, 0.042, 0.032),
-        CanopyStation(0.385, 0.065, 0.030, 0.020),
+        CanopyStation(0.150, 0.020, 0.008, 0.005),
+        CanopyStation(0.200, 0.028, 0.015, 0.011),
+        CanopyStation(0.260, 0.035, 0.022, 0.017),
+        CanopyStation(0.320, 0.032, 0.016, 0.011),
+        CanopyStation(0.380, 0.025, 0.008, 0.005),
     ),
     tail=TailGeometry(
         root_leading_x_ratio=0.700,
-        root_trailing_x_ratio=0.910,
-        tip_x_ratio=0.800,
-        root_height_ratio=0.020,
-        tip_height_ratio=0.180,
-        root_y_ratio=0.180,
-        outward_tip_offset_ratio=0.055,
+        root_trailing_x_ratio=0.890,
+        tip_x_ratio=0.790,
+        root_height_ratio=0.012,
+        tip_height_ratio=0.115,
+        root_y_ratio=0.145,
+        outward_tip_offset_ratio=0.025,
+        tail_thickness_ratio=0.006,
     ),
-    wing_thickness_ratio=0.018,
+    wing_thickness_ratio=0.0065,
 )

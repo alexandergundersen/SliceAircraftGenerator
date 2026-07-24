@@ -47,6 +47,7 @@ class SR71Builder:
             self._create_canopy(transaction, scaled, feature_name_prefix)
             self._create_tail(transaction, scaled, feature_name_prefix, side_name="Right", sign=1)
             self._create_tail(transaction, scaled, feature_name_prefix, side_name="Left", sign=-1)
+            transaction.hide_construction_geometry()
             return transaction.component
         except Exception:
             transaction.rollback()
@@ -82,19 +83,20 @@ class SR71Builder:
         import adsk.core
         import adsk.fusion
 
-        component = transaction.component
-        sketch = component.sketches.add(component.xYConstructionPlane)
-        if sketch is None:
-            raise RuntimeError("Unable to create SR-71 planform sketch.")
-        transaction.track_sketch(sketch)
-        sketch.name = f"{prefix} Planform Sketch"
+        sketch = self._create_xy_sketch(
+            transaction,
+            -scaled.wing_thickness_cm / 2,
+            f"{prefix} Planform Sketch",
+        )
 
         right_points = scaled.right_planform_points_cm
-        vertices = list(right_points) + [(x_cm, -y_cm) for x_cm, y_cm in reversed(right_points)]
+        vertices = list(right_points) + [
+            (x_cm, -y_cm) for x_cm, y_cm in reversed(right_points[1:-1])
+        ]
         self._add_closed_polygon(sketch, vertices, "SR-71 planform")
         profile = self._require_profile(sketch, "SR-71 planform")
 
-        extrudes = component.features.extrudeFeatures
+        extrudes = transaction.component.features.extrudeFeatures
         extrude_input = extrudes.createInput(
             profile, adsk.fusion.FeatureOperations.NewBodyFeatureOperation
         )
@@ -191,41 +193,30 @@ class SR71Builder:
         sign: int,
     ) -> None:
         tail = scaled.tail
-        root_y = sign * tail.root_y_cm
-        tip_y = sign * (tail.root_y_cm + tail.outward_tip_offset_cm)
-        root_sketch = self._create_xz_sketch(
-            transaction,
-            root_y,
-            f"{prefix} {side_name} Tail Root",
+        tail_sections = (
+            (tail.root_leading_x_cm, tail.root_height_cm, "Leading"),
+            (tail.tip_x_cm, tail.tip_height_cm, "Tip"),
+            (tail.root_trailing_x_cm, tail.root_height_cm, "Trailing"),
         )
-        tip_sketch = self._create_xz_sketch(
-            transaction,
-            tip_y,
-            f"{prefix} {side_name} Tail Tip",
-        )
-
-        self._add_closed_polygon(
-            root_sketch,
-            (
-                (tail.root_leading_x_cm, 0),
-                (tail.root_trailing_x_cm, 0),
-                (tail.tip_x_cm, tail.tip_height_cm),
-            ),
-            f"{side_name} tail root",
-        )
-        self._add_closed_polygon(
-            tip_sketch,
-            (
-                (tail.root_leading_x_cm + 0.015 * scaled.length_cm, tail.root_height_cm),
-                (tail.root_trailing_x_cm - 0.020 * scaled.length_cm, tail.root_height_cm),
-                (tail.tip_x_cm, tail.tip_height_cm * 0.88),
-            ),
-            f"{side_name} tail tip",
-        )
-        profiles = (
-            self._require_profile(root_sketch, f"{side_name} tail root"),
-            self._require_profile(tip_sketch, f"{side_name} tail tip"),
-        )
+        profiles = []
+        for index, (position_cm, height_cm, section_name) in enumerate(tail_sections, start=1):
+            sketch = self._create_yz_sketch(
+                transaction,
+                position_cm,
+                f"{prefix} {side_name} Tail {section_name} Station",
+            )
+            self._add_tail_profile(
+                sketch,
+                root_y_cm=tail.root_y_cm,
+                height_cm=height_cm,
+                tip_height_cm=tail.tip_height_cm,
+                outward_tip_offset_cm=tail.outward_tip_offset_cm,
+                tail_thickness_cm=tail.tail_thickness_cm,
+                wing_thickness_cm=scaled.wing_thickness_cm,
+                sign=sign,
+                label=f"{side_name} tail station {index:02d}",
+            )
+            profiles.append(self._require_profile(sketch, f"{side_name} tail station {index:02d}"))
         loft = self._create_solid_loft(transaction, profiles, f"{side_name.lower()} tail")
         self._name_feature_body(
             loft, f"{prefix} {side_name} Tail Loft", f"{prefix} {side_name} Tail Body"
@@ -248,16 +239,16 @@ class SR71Builder:
         return SR71Builder._create_sketch(transaction, sketch_plane, name)
 
     @staticmethod
-    def _create_xz_sketch(
+    def _create_xy_sketch(
         transaction: FeatureTransaction, offset_cm: float, name: str
     ) -> adsk.fusion.Sketch:
-        """Create a named XZ sketch, reusing the origin plane for zero offset."""
+        """Create a named XY sketch, reusing the origin plane for zero offset."""
         component = transaction.component
-        sketch_plane = component.xZConstructionPlane
+        sketch_plane = component.xYConstructionPlane
         if not uses_origin_plane(offset_cm):
             sketch_plane = SR71Builder._create_offset_plane(
                 transaction,
-                component.xZConstructionPlane,
+                component.xYConstructionPlane,
                 offset_cm,
                 f"{name} Plane",
             )
@@ -324,6 +315,41 @@ class SR71Builder:
                 (-width * 0.48, upper * 0.82),
             ),
             f"Fuselage station {station_index:02d}",
+        )
+
+    @staticmethod
+    def _add_tail_profile(
+        sketch: adsk.fusion.Sketch,
+        *,
+        root_y_cm: float,
+        height_cm: float,
+        tip_height_cm: float,
+        outward_tip_offset_cm: float,
+        tail_thickness_cm: float,
+        wing_thickness_cm: float,
+        sign: int,
+        label: str,
+    ) -> None:
+        """Create one thin, laterally canted YZ tail section.
+
+        The profile's upper edge moves outward with height, while its lateral
+        width stays at ``tail_thickness_cm``. This keeps cant and physical
+        thickness independent in the resulting native loft.
+        """
+        lower_z = -wing_thickness_cm / 2
+        upper_z = lower_z + height_cm
+        lower_center_y = sign * root_y_cm
+        upper_center_y = sign * (root_y_cm + outward_tip_offset_cm * (height_cm / tip_height_cm))
+        half_thickness = tail_thickness_cm / 2
+        SR71Builder._add_closed_polygon(
+            sketch,
+            (
+                (lower_center_y - half_thickness, lower_z),
+                (lower_center_y + half_thickness, lower_z),
+                (upper_center_y + half_thickness, upper_z),
+                (upper_center_y - half_thickness, upper_z),
+            ),
+            label,
         )
 
     @staticmethod
