@@ -5,8 +5,8 @@ from __future__ import annotations
 from collections.abc import Iterable
 from typing import TYPE_CHECKING
 
-from geometry.build_context import AircraftBuildContext
-from geometry.station import Station, validate_station_sequence
+from .build_context import AircraftBuildContext
+from .station import Station, validate_station_sequence
 
 if TYPE_CHECKING:
     import adsk.fusion

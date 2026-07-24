@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from geometry.aircraft_definition import AircraftDefinition
-from geometry.build_context import AircraftBuildContext
-from geometry.loft_builder import LoftBuilder
-from geometry.station import Station, scale_stations
+from .aircraft_definition import AircraftDefinition
+from .build_context import AircraftBuildContext
+from .loft_builder import LoftBuilder
+from .station import Station, scale_stations
 
 if TYPE_CHECKING:
     import adsk.fusion

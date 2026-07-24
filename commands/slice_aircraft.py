@@ -7,9 +7,9 @@ from collections.abc import Callable
 import adsk.core
 import adsk.fusion
 
-from geometry import AircraftBuildContext, AircraftDefinition, EllipticalLoftPrototypeDefinition
-from utils.events import EventSubscriptions
-from utils.fusion import log, report_error
+from ..geometry import AircraftBuildContext, AircraftDefinition, EllipticalLoftPrototypeDefinition
+from ..utils.events import EventSubscriptions
+from ..utils.fusion import log, report_error
 
 COMMAND_ID = "com_sliceaircraftgenerator_slice_aircraft"
 COMMAND_NAME = "Slice Aircraft"

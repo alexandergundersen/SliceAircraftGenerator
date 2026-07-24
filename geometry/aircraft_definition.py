@@ -5,7 +5,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
 
-from geometry.build_context import AircraftBuildContext
+from .build_context import AircraftBuildContext
 
 if TYPE_CHECKING:
     import adsk.fusion
