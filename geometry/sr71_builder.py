@@ -203,35 +203,61 @@ class SR71Builder:
         side_name: str,
         sign: int,
     ) -> None:
+        import adsk.core
+        import adsk.fusion
+
         tail = scaled.tail
-        tail_sections = (
-            (tail.root_leading_x_cm, tail.root_height_cm, "Leading"),
-            (tail.tip_x_cm, tail.tip_height_cm, "Tip"),
-            (tail.root_trailing_x_cm, tail.root_height_cm, "Trailing"),
+        component = transaction.component
+        mount_plane = self._create_offset_plane(
+            transaction,
+            component.xZConstructionPlane,
+            sign * tail.root_y_cm,
+            f"{prefix} {side_name} Tail Mount Plane",
         )
-        profiles = []
-        for index, (position_cm, height_cm, section_name) in enumerate(tail_sections, start=1):
-            sketch = self._create_yz_sketch(
-                transaction,
-                position_cm,
-                f"{prefix} {side_name} Tail {section_name} Station",
-            )
-            self._add_tail_profile(
-                sketch,
-                root_y_cm=tail.root_y_cm,
-                height_cm=height_cm,
-                tip_height_cm=tail.tip_height_cm,
-                outward_tip_offset_cm=tail.outward_tip_offset_cm,
-                tail_thickness_cm=tail.tail_thickness_cm,
-                wing_thickness_cm=scaled.wing_thickness_cm,
-                sign=sign,
-                label=f"{side_name} tail station {index:02d}",
-            )
-            profiles.append(self._require_profile(sketch, f"{side_name} tail station {index:02d}"))
-        loft = self._create_solid_loft(transaction, profiles, f"{side_name.lower()} tail")
+        axis_sketch = self._create_sketch(
+            transaction, mount_plane, f"{prefix} {side_name} Tail Cant Axis"
+        )
+        axis = axis_sketch.sketchCurves.sketchLines.addByTwoPoints(
+            adsk.core.Point3D.create(0, tail.base_z_cm, 0),
+            adsk.core.Point3D.create(scaled.length_cm, tail.base_z_cm, 0),
+        )
+        if axis is None:
+            raise RuntimeError(f"Unable to create {side_name.lower()} tail cant axis.")
+        axis.isConstruction = True
+        canted_plane = self._create_angled_plane(
+            transaction,
+            axis,
+            mount_plane,
+            sign * tail.outward_cant_angle_degrees,
+            f"{prefix} {side_name} Tail Canted Plane",
+        )
+        profile_sketch = self._create_sketch(
+            transaction, canted_plane, f"{prefix} {side_name} Tail Profile"
+        )
+        self._add_closed_polygon(
+            profile_sketch,
+            tail.side_profile_points_cm,
+            f"{side_name} angular tail profile",
+        )
+        profile = self._require_profile(profile_sketch, f"{side_name} angular tail profile")
+        extrude_input = component.features.extrudeFeatures.createInput(
+            profile, adsk.fusion.FeatureOperations.NewBodyFeatureOperation
+        )
+        if extrude_input is None:
+            raise RuntimeError(f"Unable to create {side_name.lower()} tail extrusion input.")
+        thickness = adsk.core.ValueInput.createByReal(tail.tail_thickness_cm)
+        if thickness is None:
+            raise RuntimeError(f"Unable to create {side_name.lower()} tail thickness value.")
+        extrude_input.setDistanceExtent(False, thickness)
+        tail_feature = component.features.extrudeFeatures.add(extrude_input)
+        if tail_feature is None:
+            raise RuntimeError(f"Unable to create {side_name.lower()} angular tail extrusion.")
+        transaction.track_feature(tail_feature)
         transaction.track_body(
             self._name_feature_body(
-                loft, f"{prefix} {side_name} Tail Loft", f"{prefix} {side_name} Tail Body"
+                tail_feature,
+                f"{prefix} {side_name} Tail Extrusion",
+                f"{prefix} {side_name} Tail Body",
             )
         )
 
@@ -293,6 +319,30 @@ class SR71Builder:
         return plane
 
     @staticmethod
+    def _create_angled_plane(
+        transaction: FeatureTransaction,
+        axis: object,
+        base_plane: object,
+        angle_degrees: float,
+        name: str,
+    ) -> adsk.fusion.ConstructionPlane:
+        """Create a named canted plane around a tail-root longitudinal axis."""
+        import adsk.core
+
+        plane_input = transaction.component.constructionPlanes.createInput()
+        if plane_input is None:
+            raise RuntimeError(f"Unable to create construction-plane input for {name}.")
+        angle = adsk.core.ValueInput.createByString(f"{angle_degrees:g} deg")
+        if angle is None or not plane_input.setByAngle(axis, angle, base_plane):
+            raise RuntimeError(f"Unable to define canted construction plane {name}.")
+        plane = transaction.component.constructionPlanes.add(plane_input)
+        if plane is None:
+            raise RuntimeError(f"Unable to create canted construction plane {name}.")
+        transaction.track_offset_plane(plane)
+        plane.name = name
+        return plane
+
+    @staticmethod
     def _create_sketch(
         transaction: FeatureTransaction, plane: object, name: str
     ) -> adsk.fusion.Sketch:
@@ -328,41 +378,6 @@ class SR71Builder:
                 (-width * 0.48, upper * 0.82),
             ),
             f"Fuselage station {station_index:02d}",
-        )
-
-    @staticmethod
-    def _add_tail_profile(
-        sketch: adsk.fusion.Sketch,
-        *,
-        root_y_cm: float,
-        height_cm: float,
-        tip_height_cm: float,
-        outward_tip_offset_cm: float,
-        tail_thickness_cm: float,
-        wing_thickness_cm: float,
-        sign: int,
-        label: str,
-    ) -> None:
-        """Create one thin, laterally canted YZ tail section.
-
-        The profile's upper edge moves outward with height, while its lateral
-        width stays at ``tail_thickness_cm``. This keeps cant and physical
-        thickness independent in the resulting native loft.
-        """
-        lower_z = -wing_thickness_cm / 2
-        upper_z = lower_z + height_cm
-        lower_center_y = sign * root_y_cm
-        upper_center_y = sign * (root_y_cm + outward_tip_offset_cm * (height_cm / tip_height_cm))
-        half_thickness = tail_thickness_cm / 2
-        SR71Builder._add_closed_polygon(
-            sketch,
-            (
-                (lower_center_y - half_thickness, lower_z),
-                (lower_center_y + half_thickness, lower_z),
-                (upper_center_y + half_thickness, upper_z),
-                (upper_center_y - half_thickness, upper_z),
-            ),
-            label,
         )
 
     @staticmethod

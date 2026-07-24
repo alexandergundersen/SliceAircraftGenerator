@@ -25,6 +25,11 @@ therefore refines the narrow center body, swept outer planform, nacelle spacing,
 low canopy, thin wing, and independently-thick canted tails. Another manual
 Fusion visual smoke test is required before this definition is considered ready.
 
+The latest smoke test also confirmed successful generation and hidden generated
+construction geometry. Its clean three-quarter and front views exposed detached
+nacelles and rounded tail silhouettes, so the current revision rebuilds the
+recipe around per-station planform containment and angular tail profiles.
+
 ## Install
 
 1. Download or clone this repository.
@@ -87,21 +92,27 @@ approximations intended for a stable fabrication-oriented display model. All
 dimensions scale linearly from the requested length. The current SR-71 is
 deliberately multi-body; it does not perform fragile boolean unions.
 
-The refined approximation uses the following normalized design ranges. These are
-artistic fabrication choices, not sourced SR-71 engineering dimensions:
+The refined approximation uses the following normalized silhouette constraints.
+These are artistic fabrication choices, not sourced SR-71 engineering dimensions:
 
-- The central fuselage/chine maximum half-width is 0.062 of overall length; it is
-  0.025 near x=0.12 and 0.052 near x=0.36, with a low flattened vertical section.
+- A piecewise-linear planform envelope drives body containment. It stays narrow
+  through x=0.15, reaches 0.165 by x=0.36, peaks at the sourced half-span near
+  x=0.54, and keeps an explicit outer-wing margin around every nacelle station.
+- The central fuselage/chine maximum half-width is 0.044 of overall length; it is
+  0.020 near x=0.12 and 0.037 near x=0.35, with a maximum upper height of 0.023
+  and a lower height no greater than half of the upper height.
 - The wing is 0.0065 of overall length thick (about 1.95 mm at 300 mm) and is
   centered about the XY datum using an offset sketch plane.
-- Nacelle center offsets remain from 0.140 to 0.150 of length, their main
-  half-width is 0.038–0.043, and the outer wing provides at least 0.05 of length
-  of visible margin beyond the nacelles.
-- The five-station canopy runs from x=0.15 to x=0.38 with maximum half-width
-  0.022 and half-height 0.017, creating a deliberately low raised feature.
-- Each tail has a 0.115 maximum height, a 0.025 outward cant offset, and an
-  independent 0.006 physical thickness (about 1.8 mm at 300 mm). The tail loft
-  uses thin canted YZ profiles so the outward cant is not used as body thickness.
+- Nacelle centers remain from 0.118 to 0.125 of length, their main half-width is
+  0.028–0.035, and every section intersects the wing slab as well as remaining
+  inside the planform envelope with a documented outer-wing margin.
+- The five-station canopy runs from x=0.15 to x=0.32 and deliberately forms two
+  low tandem humps with a dip between them; its maximum half-width is 0.016 and
+  half-height is 0.013.
+- Each tail is an angular swept quadrilateral with a 0.095 maximum height, a
+  15-degree outward cant, and independent 0.005 physical thickness (about
+  1.5 mm at 300 mm). It is created from a canted XZ side profile and thin native
+  extrusion, not a rounded multi-section tail loft.
 
 After a successful SR-71 generation, the add-in hides only the construction
 planes and sketches it created. They remain editable in Fusion's browser and
@@ -110,6 +121,20 @@ objects and origin geometry are never hidden. The add-in uses each generated
 object's browser light bulb (`isLightBulbOn`), not Fusion's read-only effective
 visibility property. If a browser visibility update fails, the completed
 geometry remains in place and the Text Commands log records a warning.
+
+### Silhouette preview
+
+The standard-library-only preview tool draws the top, side, and front envelopes
+from the same pure normalized data used by Fusion. It is intended for quick
+proportion review before a manual Fusion smoke test:
+
+```sh
+python3 tools/render_sr71_preview.py --length-mm 300 --output /tmp/sr71-preview.svg
+```
+
+The SVG includes the planform, fuselage, nacelles, canopy, tails, centerlines,
+and sourced overall length/span bounds. It is a development visualization, not a
+separate set of drawing-only proportions.
 
 ### Development
 
