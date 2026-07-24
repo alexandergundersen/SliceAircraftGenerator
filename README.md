@@ -106,7 +106,10 @@ artistic fabrication choices, not sourced SR-71 engineering dimensions:
 After a successful SR-71 generation, the add-in hides only the construction
 planes and sketches it created. They remain editable in Fusion's browser and
 timeline, while the initial viewport shows the resulting bodies. Existing user
-objects and origin geometry are never hidden.
+objects and origin geometry are never hidden. The add-in uses each generated
+object's browser light bulb (`isLightBulbOn`), not Fusion's read-only effective
+visibility property. If a browser visibility update fails, the completed
+geometry remains in place and the Text Commands log records a warning.
 
 ### Development
 

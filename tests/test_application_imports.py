@@ -41,3 +41,23 @@ class ApplicationImportTests(unittest.TestCase):
                         )
 
         self.assertEqual(violations, [])
+
+    def test_application_code_never_assigns_to_effective_visibility(self) -> None:
+        """Keep Fusion read-only ``isVisible`` properties out of write targets."""
+        violations: list[str] = []
+
+        for source_path in APPLICATION_SOURCES:
+            source_tree = ast.parse(
+                source_path.read_text(encoding="utf-8"), filename=str(source_path)
+            )
+            for node in ast.walk(source_tree):
+                if isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign)):
+                    targets = node.targets if isinstance(node, ast.Assign) else (node.target,)
+                    for target in targets:
+                        if isinstance(target, ast.Attribute) and target.attr == "isVisible":
+                            violations.append(
+                                f"{source_path.relative_to(PROJECT_ROOT)}:{node.lineno}: "
+                                "assignment to isVisible"
+                            )
+
+        self.assertEqual(violations, [])

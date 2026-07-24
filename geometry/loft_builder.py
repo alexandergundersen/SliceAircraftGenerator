@@ -35,6 +35,7 @@ class _CreatedFeatures:
     """Objects owned by a root-component generation and eligible for rollback."""
 
     features: list[object] = field(default_factory=list)
+    bodies: list[object] = field(default_factory=list)
     sketches: list[object] = field(default_factory=list)
     offset_planes: list[object] = field(default_factory=list)
 
@@ -57,6 +58,10 @@ class FeatureTransaction:
         """Record a newly created native feature for root-component rollback."""
         self._created_features.features.append(feature)
 
+    def track_body(self, body: object) -> None:
+        """Record a newly created B-Rep body for browser visibility cleanup."""
+        self._created_features.bodies.append(body)
+
     def track_sketch(self, sketch: object) -> None:
         """Record a newly created sketch for root-component rollback."""
         self._created_features.sketches.append(sketch)
@@ -78,14 +83,40 @@ class FeatureTransaction:
         for plane in reversed(self._created_features.offset_planes):
             self._delete_if_valid(plane)
 
-    def hide_construction_geometry(self) -> None:
-        """Hide only sketches and planes created by this generation operation."""
-        for sketch in self._created_features.sketches:
-            if sketch.isValid:
-                sketch.isVisible = False
-        for plane in self._created_features.offset_planes:
-            if plane.isValid:
-                plane.isVisible = False
+    def hide_construction_geometry(self) -> tuple[str, ...]:
+        """Hide only this transaction's sketches and offset planes.
+
+        Browser visibility is cosmetic. A failed light-bulb update is returned
+        as a diagnostic warning instead of invalidating completed geometry.
+        """
+        warnings = self._set_tracked_browser_visibility(
+            self._created_features.sketches, "Sketch", False
+        )
+        warnings.extend(
+            self._set_tracked_browser_visibility(
+                self._created_features.offset_planes, "ConstructionPlane", False
+            )
+        )
+        return tuple(warnings)
+
+    def ensure_generated_bodies_visible(self) -> tuple[str, ...]:
+        """Turn on browser visibility for only bodies made by this transaction."""
+        return tuple(
+            self._set_tracked_browser_visibility(self._created_features.bodies, "BRepBody", True)
+        )
+
+    @staticmethod
+    def _set_tracked_browser_visibility(
+        objects: Iterable[object], object_type: str, visible: bool
+    ) -> list[str]:
+        warnings: list[str] = []
+        for browser_object in objects:
+            try:
+                if not set_browser_visibility(browser_object, visible):
+                    continue
+            except Exception as error:
+                warnings.append(f"{object_type} '{_browser_object_name(browser_object)}': {error}")
+        return warnings
 
     def _resolve_target(self) -> BuildTarget:
         if self._context.placement is BuildPlacement.ROOT_COMPONENT:
@@ -130,6 +161,33 @@ class FeatureTransaction:
                 entity.deleteMe()
         except Exception:
             pass
+
+
+def set_browser_visibility(browser_object: object, visible: bool) -> bool:
+    """Set one generated object's browser light bulb without changing its parent.
+
+    ``isVisible`` is Fusion's effective visibility and is read-only on several
+    object types, including construction planes. ``isLightBulbOn`` is the
+    writable browser-level control. Invalid objects are skipped so cleanup can
+    safely run after dependent features consume a profile.
+    """
+    if not browser_object.isValid:
+        return False
+    try:
+        browser_object.isLightBulbOn = visible
+    except (AttributeError, TypeError) as error:
+        raise RuntimeError(
+            "does not support writable browser visibility through isLightBulbOn"
+        ) from error
+    return True
+
+
+def _browser_object_name(browser_object: object) -> str:
+    """Return a useful diagnostic name without letting a failed getter escape."""
+    try:
+        return browser_object.name
+    except Exception:
+        return "<unnamed>"
 
 
 class LoftBuilder:

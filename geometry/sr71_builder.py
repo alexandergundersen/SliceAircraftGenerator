@@ -47,11 +47,14 @@ class SR71Builder:
             self._create_canopy(transaction, scaled, feature_name_prefix)
             self._create_tail(transaction, scaled, feature_name_prefix, side_name="Right", sign=1)
             self._create_tail(transaction, scaled, feature_name_prefix, side_name="Left", sign=-1)
-            transaction.hide_construction_geometry()
-            return transaction.component
         except Exception:
             transaction.rollback()
             raise
+
+        visibility_warnings = [*transaction.hide_construction_geometry()]
+        visibility_warnings.extend(transaction.ensure_generated_bodies_visible())
+        self._log_visibility_warnings(visibility_warnings)
+        return transaction.component
 
     def _create_fuselage(
         self,
@@ -70,8 +73,10 @@ class SR71Builder:
             profiles.append(self._require_profile(sketch, f"Fuselage station {index:02d}"))
 
         loft = self._create_solid_loft(transaction, profiles, "fuselage/chine")
-        self._name_feature_body(
-            loft, f"{prefix} Fuselage/Chine Loft", f"{prefix} Fuselage/Chine Body"
+        transaction.track_body(
+            self._name_feature_body(
+                loft, f"{prefix} Fuselage/Chine Loft", f"{prefix} Fuselage/Chine Body"
+            )
         )
 
     def _create_wing(
@@ -110,7 +115,9 @@ class SR71Builder:
         if wing is None:
             raise RuntimeError("Unable to create SR-71 wing extrusion.")
         transaction.track_feature(wing)
-        self._name_feature_body(wing, f"{prefix} Wing Extrusion", f"{prefix} Wing Body")
+        transaction.track_body(
+            self._name_feature_body(wing, f"{prefix} Wing Extrusion", f"{prefix} Wing Body")
+        )
 
     def _create_nacelle(
         self,
@@ -151,10 +158,12 @@ class SR71Builder:
             )
 
         loft = self._create_solid_loft(transaction, profiles, f"{side_name.lower()} nacelle")
-        self._name_feature_body(
-            loft,
-            f"{prefix} {side_name} Nacelle Loft",
-            f"{prefix} {side_name} Nacelle Body",
+        transaction.track_body(
+            self._name_feature_body(
+                loft,
+                f"{prefix} {side_name} Nacelle Loft",
+                f"{prefix} {side_name} Nacelle Body",
+            )
         )
 
     def _create_canopy(
@@ -181,7 +190,9 @@ class SR71Builder:
             profiles.append(self._require_profile(sketch, f"Canopy station {index:02d}"))
 
         loft = self._create_solid_loft(transaction, profiles, "canopy")
-        self._name_feature_body(loft, f"{prefix} Canopy Loft", f"{prefix} Canopy Body")
+        transaction.track_body(
+            self._name_feature_body(loft, f"{prefix} Canopy Loft", f"{prefix} Canopy Body")
+        )
 
     def _create_tail(
         self,
@@ -218,8 +229,10 @@ class SR71Builder:
             )
             profiles.append(self._require_profile(sketch, f"{side_name} tail station {index:02d}"))
         loft = self._create_solid_loft(transaction, profiles, f"{side_name.lower()} tail")
-        self._name_feature_body(
-            loft, f"{prefix} {side_name} Tail Loft", f"{prefix} {side_name} Tail Body"
+        transaction.track_body(
+            self._name_feature_body(
+                loft, f"{prefix} {side_name} Tail Loft", f"{prefix} {side_name} Tail Body"
+            )
         )
 
     @staticmethod
@@ -404,7 +417,7 @@ class SR71Builder:
         return loft
 
     @staticmethod
-    def _name_feature_body(feature: object, feature_name: str, body_name: str) -> None:
+    def _name_feature_body(feature: object, feature_name: str, body_name: str) -> object:
         feature.name = feature_name
         if feature.bodies.count != 1:
             raise RuntimeError(f"{feature_name}: expected one generated body.")
@@ -412,3 +425,20 @@ class SR71Builder:
         if body is None:
             raise RuntimeError(f"{feature_name}: unable to retrieve generated body.")
         body.name = body_name
+        return body
+
+    @staticmethod
+    def _log_visibility_warnings(warnings: list[str]) -> None:
+        """Write non-blocking browser-cleanup diagnostics after geometry succeeds."""
+        if not warnings:
+            return
+        from ..utils.fusion import log
+
+        count = len(warnings)
+        object_label = "object" if count == 1 else "objects"
+        log(
+            "Generated SR-71 successfully, but "
+            f"{count} generated browser {object_label} could not be set:"
+        )
+        for warning in warnings:
+            log(f"  {warning}")
