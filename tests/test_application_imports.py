@@ -7,8 +7,8 @@ import unittest
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-INTERNAL_PACKAGES = frozenset({"commands", "geometry", "utils", "export"})
-APPLICATION_PACKAGES = ("commands", "geometry", "utils", "export")
+INTERNAL_PACKAGES = frozenset({"aircraft", "commands", "geometry", "utils", "export"})
+APPLICATION_PACKAGES = ("aircraft", "commands", "geometry", "utils", "export")
 APPLICATION_SOURCES = (
     PROJECT_ROOT / "SliceAircraftGenerator.py",
     *(path for package in APPLICATION_PACKAGES for path in (PROJECT_ROOT / package).rglob("*.py")),
