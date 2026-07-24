@@ -30,7 +30,7 @@ class AircraftDefinition(ABC):
 
     @abstractmethod
     def generate(self, context: AircraftBuildContext) -> adsk.fusion.Component:
-        """Create and return an editable aircraft component below ``root_component``.
+        """Create and return the component containing editable generated geometry.
 
         Args:
             context: Immutable inputs for the requested generation operation.

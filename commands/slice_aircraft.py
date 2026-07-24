@@ -8,7 +8,12 @@ from collections.abc import Callable
 import adsk.core
 import adsk.fusion
 
-from ..geometry import AircraftBuildContext, AircraftDefinition, EllipticalLoftPrototypeDefinition
+from ..geometry import (
+    AircraftBuildContext,
+    AircraftDefinition,
+    BuildPlacement,
+    EllipticalLoftPrototypeDefinition,
+)
 from ..utils.events import EventSubscriptions
 from ..utils.fusion import log, report_error
 
@@ -164,18 +169,20 @@ class _CommandSession:
         design = adsk.fusion.Design.cast(app.activeProduct)
         if design is None:
             raise RuntimeError("Open a Fusion Design before generating an aircraft.")
+        placement = _placement_for_design_intent(design.designIntent)
         if design.designType != adsk.fusion.DesignTypes.ParametricDesignType:
             raise RuntimeError("Enable Capture Design History before generating an aircraft.")
 
         context = AircraftBuildContext(
             root_component=design.rootComponent,
             length_cm=self._length.value,
+            placement=placement,
         )
         component = definition.generate(context)
         log(
             "Generated prototype component: "
-            f"{component.name}; "
-            f"aircraft={aircraft}, length={self._length.expression}, "
+            f"aircraft={aircraft}, placement={placement.value}, "
+            f"target_component={component.name}, length={self._length.expression}, "
             f"rib_count={self._rib_count.value}, "
             f"rib_thickness={self._rib_thickness.expression}"
         )
@@ -214,3 +221,15 @@ class _DestroyHandler(adsk.core.CommandEventHandler):
     def notify(self, args: adsk.core.CommandEventArgs) -> None:
         del args
         self._session.dispose()
+
+
+def _placement_for_design_intent(design_intent: adsk.fusion.DesignIntentTypes) -> BuildPlacement:
+    """Map Fusion's design intent to an explicit geometry placement mode."""
+    if design_intent == adsk.fusion.DesignIntentTypes.PartDesignIntentType:
+        return BuildPlacement.ROOT_COMPONENT
+    if design_intent == adsk.fusion.DesignIntentTypes.HybridDesignIntentType:
+        return BuildPlacement.NEW_INTERNAL_COMPONENT
+    raise RuntimeError(
+        "Slice Aircraft currently supports Part and Hybrid Designs. "
+        "Open a Part Design or Hybrid Design to generate editable geometry."
+    )

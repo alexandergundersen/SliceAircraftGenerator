@@ -59,6 +59,11 @@ to `LoftBuilder`. It is intentionally only a generic demonstration recipe, not
 an accurate model of an aircraft; accurate aircraft definitions will be added
 separately.
 
+The command selects geometry placement from Fusion's design intent. Part Designs
+generate directly in the root component, Hybrid Designs generate in a new
+internal component, and Assembly Designs are rejected because external assembly
+components are not part of this add-in's current scope.
+
 ## License
 
 This project is licensed under the [MIT License](LICENSE).
